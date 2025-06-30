@@ -5,6 +5,8 @@ const path = require('path');
 
 puppeteer.use(StealthPlugin());
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 const scrape = async (keyword, pincode) => {
   const searchQuery = `${keyword} ${pincode}`;
   const outputFile = `results-${keyword}-${pincode}.json`;
@@ -24,12 +26,12 @@ const scrape = async (keyword, pincode) => {
     for (let i = 0; i < 10; i++) {
       previousHeight = await page.evaluate('document.body.scrollHeight');
       await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-      await page.waitForTimeout(2000);
+      await delay(2000);
       const newHeight = await page.evaluate('document.body.scrollHeight');
       if (newHeight === previousHeight) break;
     }
 
-    // Scrape business data
+    // Scrape data
     const data = await page.evaluate(() => {
       const results = [];
       const cards = document.querySelectorAll('a.hfpxzc');
@@ -58,7 +60,7 @@ const scrape = async (keyword, pincode) => {
   }
 };
 
-// Get arguments from CLI
+// CLI input
 const [,, keyword, pincode] = process.argv;
 if (!keyword || !pincode) {
   console.log('Usage: node scraper.js <keyword> <pincode>');
