@@ -4,8 +4,7 @@
   "description": "Google Maps scraper on Render",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "postinstall": "node node_modules/puppeteer/install.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "chrome-aws-lambda": "^10.1.0",
