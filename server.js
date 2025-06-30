@@ -1,22 +1,35 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+
+puppeteer.use(StealthPlugin());
 
 async function scrape(keyword, pincode) {
   const searchURL = `https://www.google.com/maps/search/${encodeURIComponent(keyword)}+${encodeURIComponent(pincode)}`;
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled'
+    ]
   });
 
   const page = await browser.newPage();
 
+  // Set user-agent to pretend it's a real browser
+  await page.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  );
+
   try {
-    await page.goto(searchURL, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(searchURL, {
+      waitUntil: 'domcontentloaded',
+      timeout: 90000, // 90 seconds
+    });
 
-    // Optional delay to ensure page loads all listings
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(6000); // wait for listings to load
 
-    // Get data from the results
     const data = await page.evaluate(() => {
       const results = [];
       const items = document.querySelectorAll('div[role="article"]');
@@ -40,7 +53,6 @@ async function scrape(keyword, pincode) {
   }
 }
 
-// Handle command line args
 const [,, keyword, pincode] = process.argv;
 
 if (!keyword || !pincode) {
