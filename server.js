@@ -1,30 +1,51 @@
-const puppeteer = require("puppeteer");
+const puppeteer = require('puppeteer');
 
-async function scrapeGmap(keyword, pincode) {
-  const browser = await puppeteer.launch({ headless: "new" });
-  const page = await browser.newPage();
+async function scrape(keyword, pincode) {
+  const searchURL = `https://www.google.com/maps/search/${encodeURIComponent(keyword)}+${encodeURIComponent(pincode)}`;
 
-  const query = `${keyword} ${pincode}`;
-  const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-
-  await page.waitForSelector('[role="article"]', { timeout: 10000 });
-
-  const results = await page.evaluate(() => {
-    const cards = document.querySelectorAll('[role="article"]');
-    const data = [];
-    cards.forEach((card) => {
-      const name = card.querySelector("h3")?.textContent || "";
-      const address = card.querySelector('[data-item-id*="address"]')?.textContent || "";
-      const phone = card.querySelector('[data-tooltip*="Phone"]')?.textContent || "";
-      data.push({ name, address, phone });
-    });
-    return data;
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
-  console.log(JSON.stringify(results, null, 2));
-  await browser.close();
+  const page = await browser.newPage();
+
+  try {
+    await page.goto(searchURL, { waitUntil: 'networkidle2', timeout: 60000 });
+
+    // Optional delay to ensure page loads all listings
+    await page.waitForTimeout(5000);
+
+    // Get data from the results
+    const data = await page.evaluate(() => {
+      const results = [];
+      const items = document.querySelectorAll('div[role="article"]');
+
+      items.forEach(item => {
+        const name = item.querySelector('div[aria-label]')?.getAttribute('aria-label') || '';
+        const address = item.querySelector('span[jsinstance]')?.innerText || '';
+        const phone = item.innerText.match(/\+91[-\s]?\d{10}/)?.[0] || '';
+
+        results.push({ name, address, phone });
+      });
+
+      return results;
+    });
+
+    console.log(data);
+  } catch (error) {
+    console.error('❌ Scraping failed:', error.message);
+  } finally {
+    await browser.close();
+  }
 }
 
-const [keyword, pincode] = process.argv.slice(2);
-scrapeGmap(keyword || "ATM", pincode || "110001");
+// Handle command line args
+const [,, keyword, pincode] = process.argv;
+
+if (!keyword || !pincode) {
+  console.error('Usage: node scraper.js <keyword> <pincode>');
+  process.exit(1);
+}
+
+scrape(keyword, pincode);
