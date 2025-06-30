@@ -21,17 +21,15 @@ const scrape = async (keyword, pincode) => {
     const searchURL = `https://www.google.com/maps/search/${encodedSearch}`;
     await page.goto(searchURL, { waitUntil: 'networkidle2', timeout: 60000 });
 
+    // Manual delay instead of page.waitForTimeout
+    await delay(3000);
+
     // Scroll to load more results
-    let previousHeight;
     for (let i = 0; i < 10; i++) {
-      previousHeight = await page.evaluate('document.body.scrollHeight');
-      await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
+      await page.evaluate(() => window.scrollBy(0, window.innerHeight));
       await delay(2000);
-      const newHeight = await page.evaluate('document.body.scrollHeight');
-      if (newHeight === previousHeight) break;
     }
 
-    // Scrape data
     const data = await page.evaluate(() => {
       const results = [];
       const cards = document.querySelectorAll('a.hfpxzc');
