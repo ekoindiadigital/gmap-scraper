@@ -1,23 +1,15 @@
 const express = require("express");
 const chromium = require("chrome-aws-lambda");
-const puppeteer = require("puppeteer-core");
 
 const app = express();
-
-app.get("/", (req, res) => {
-  res.send("✅ Gmap Scraper is live. Use /scrape?keyword=...&pincode=...");
-});
+const port = process.env.PORT || 3000;
 
 app.get("/scrape", async (req, res) => {
   const { keyword, pincode } = req.query;
+  if (!keyword || !pincode) return res.status(400).json({ error: "Missing keyword or pincode" });
 
-  if (!keyword || !pincode) {
-    return res.status(400).json({ error: "Missing keyword or pincode" });
-  }
-
-  let browser;
   try {
-    browser = await puppeteer.launch({
+    const browser = await chromium.puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
       executablePath: await chromium.executablePath,
@@ -25,36 +17,19 @@ app.get("/scrape", async (req, res) => {
     });
 
     const page = await browser.newPage();
-    const url = `https://www.google.com/maps/search/${encodeURIComponent(keyword)}+${encodeURIComponent(pincode)}`;
-    await page.goto(url, { waitUntil: "networkidle2" });
+    const query = encodeURIComponent(`${keyword} in ${pincode}`);
+    await page.goto(`https://www.google.com/maps/search/${query}`);
 
     await page.waitForTimeout(3000);
+    const title = await page.title();
 
-    const results = await page.evaluate(() => {
-      const data = [];
-      const elements = document.querySelectorAll('[role="article"]');
-
-      elements.forEach(el => {
-        const name = el.querySelector("div[aria-label]")?.getAttribute("aria-label") || null;
-        const address = el.querySelector(".W4Efsd div:nth-child(2) .W4Efsd")?.textContent || null;
-        if (name) data.push({ name, address });
-      });
-
-      return data;
-    });
-
-    res.json({ keyword, pincode, count: results.length, results });
+    await browser.close();
+    res.json({ success: true, title });
   } catch (err) {
-    res.status(500).json({
-      error: "Failed to scrape Google Maps",
-      detail: err.message,
-    });
-  } finally {
-    if (browser) await browser.close();
+    res.status(500).json({ error: "Scraping failed", detail: err.message });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server started on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
