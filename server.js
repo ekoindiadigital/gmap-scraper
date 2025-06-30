@@ -15,34 +15,40 @@ app.get('/scrape', async (req, res) => {
     return res.status(400).json({ error: 'Missing keyword or pincode' });
   }
 
-  const searchURL = `https://www.google.com/maps/search/${keyword}+${pincode}`;
+  const query = `${keyword} in ${pincode}`;
 
   try {
     const browser = await puppeteer.launch({
-      args: ['--no-sandbox'],
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-    const page = await browser.newPage();
-    await page.goto(searchURL, { waitUntil: 'networkidle2' });
 
-    // Scraping logic here (basic version just for demonstration)
+    const page = await browser.newPage();
+    await page.goto(`https://www.google.com/maps`, { waitUntil: 'domcontentloaded' });
+
+    // Type in search query
+    await page.waitForSelector('input[aria-label="Search Google Maps"]');
+    await page.type('input[aria-label="Search Google Maps"]', query);
+    await page.keyboard.press('Enter');
+
+    // Wait for search results
+    await page.waitForTimeout(5000);
+
+    // Extract place names from the results
     const results = await page.evaluate(() => {
-      const data = [];
-      const listings = document.querySelectorAll('[role="article"]');
-      listings.forEach((el) => {
-        const name = el.querySelector('h3')?.innerText || 'No name';
-        const address = el.querySelector('[data-tooltip]')?.innerText || 'No address';
-        data.push({ name, address });
-      });
-      return data;
+      const nodes = document.querySelectorAll('div[role="article"] h3 span');
+      return Array.from(nodes).map(el => el.textContent);
     });
 
     await browser.close();
-    res.json({ results });
+
+    res.json({ success: true, query, results });
   } catch (err) {
-    res.status(500).json({ error: err.toString() });
+    console.error(err);
+    res.status(500).json({ error: 'Failed to scrape Google Maps', detail: err.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`✅ Server started on port ${PORT}`);
 });
