@@ -1,62 +1,68 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const fs = require('fs');
+const path = require('path');
+
 puppeteer.use(StealthPlugin());
 
-const fs = require('fs');
-const keyword = process.argv[2];
-const pincode = process.argv[3];
+const scrape = async (keyword, pincode) => {
+  const searchQuery = `${keyword} ${pincode}`;
+  const outputFile = `results-${keyword}-${pincode}.json`;
 
-if (!keyword || !pincode) {
-  console.error('❌ Usage: node scraper.js <KEYWORD> <PINCODE>');
-  process.exit(1);
-}
+  console.log(`🔍 Searching for: ${searchQuery}`);
 
-const searchURL = `https://www.google.com/maps/search/${encodeURIComponent(keyword)}+${pincode}`;
-
-(async () => {
-  console.log(`🔍 Searching for: ${keyword} in ${pincode}`);
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
-
+  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage();
 
   try {
-    await page.goto(searchURL, { waitUntil: 'domcontentloaded', timeout: 0 });
+    const encodedSearch = encodeURIComponent(searchQuery);
+    const searchURL = `https://www.google.com/maps/search/${encodedSearch}`;
+    await page.goto(searchURL, { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // Wait for results list container
-    await page.waitForSelector('div[role="main"]', { timeout: 15000 });
-
-    // Scroll to load more listings
-    for (let i = 0; i < 5; i++) {
-      await page.keyboard.press('PageDown');
-      await new Promise(res => setTimeout(res, 1000));
+    // Scroll to load more results
+    let previousHeight;
+    for (let i = 0; i < 10; i++) {
+      previousHeight = await page.evaluate('document.body.scrollHeight');
+      await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
+      await page.waitForTimeout(2000);
+      const newHeight = await page.evaluate('document.body.scrollHeight');
+      if (newHeight === previousHeight) break;
     }
 
+    // Scrape business data
     const data = await page.evaluate(() => {
-      const items = document.querySelectorAll('div[role="article"]');
       const results = [];
+      const cards = document.querySelectorAll('a.hfpxzc');
 
-      items.forEach(item => {
-        const name = item.querySelector('div[aria-label]')?.getAttribute('aria-label') || '';
-        const address = item.querySelector('.W4Efsd')?.textContent || '';
-        const phoneMatch = item.innerText.match(/(\+91[-\s]?)?\d{10}/);
+      cards.forEach(card => {
+        const name = card.querySelector('div.Nv2PK span')?.textContent || '';
+        const address = card.querySelector('.W4Efsd')?.textContent || '';
+        const phoneMatch = card.innerText.match(/(\+91[-\s]?)?\d{10}/);
         const phone = phoneMatch ? phoneMatch[0] : '';
-        const website = item.querySelector('a[href^="http"]')?.href || '';
+        const website = card.href;
 
-        if (name) results.push({ name, address, phone, website });
+        if (name) {
+          results.push({ name, address, phone, website });
+        }
       });
 
       return results;
     });
 
-    const filename = `results-${keyword}-${pincode}.json`;
-    fs.writeFileSync(filename, JSON.stringify(data, null, 2));
-    console.log(`✅ Scraped ${data.length} entries. Saved to ${filename}`);
+    fs.writeFileSync(path.join(__dirname, outputFile), JSON.stringify(data, null, 2));
+    console.log(`✅ Scraped ${data.length} entries. Saved to ${outputFile}`);
   } catch (err) {
     console.error('❌ Scraping failed:', err.message);
   } finally {
     await browser.close();
   }
-})();
+};
+
+// Get arguments from CLI
+const [,, keyword, pincode] = process.argv;
+if (!keyword || !pincode) {
+  console.log('Usage: node scraper.js <keyword> <pincode>');
+  process.exit(1);
+}
+
+scrape(keyword, pincode);
