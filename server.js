@@ -1,48 +1,39 @@
-const express = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require("puppeteer");
+const fs = require("fs");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+// Get input from command line
+const keyword = process.argv[2] || "ATM";
+const pincode = process.argv[3] || "110001";
 
-app.get('/', (req, res) => {
-  res.send('✅ Server is live. Use /scrape?keyword=ATM&pincode=110001');
-});
+// Main scraper function
+(async () => {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
 
-app.get('/scrape', async (req, res) => {
-  const { keyword, pincode } = req.query;
-  if (!keyword || !pincode) {
-    return res.status(400).json({ error: 'Missing keyword or pincode' });
-  }
+  const page = await browser.newPage();
 
-  try {
-    const browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+  const searchQuery = encodeURIComponent(`${keyword} near ${pincode}`);
+  const url = `https://www.google.com/maps/search/${searchQuery}`;
+
+  await page.goto(url, { waitUntil: "networkidle2" });
+  await page.waitForTimeout(5000); // wait for results to load
+
+  const results = await page.evaluate(() => {
+    const data = [];
+    const cards = document.querySelectorAll('div[role="article"]');
+    cards.forEach(card => {
+      const name = card.querySelector("h3")?.innerText;
+      const address = card.querySelector("span[jsinstance='2']")?.innerText;
+      if (name && address) {
+        data.push({ name, address });
+      }
     });
+    return data;
+  });
 
-    const page = await browser.newPage();
-    const searchQuery = `https://www.google.com/maps/search/${keyword}+${pincode}`;
-    await page.goto(searchQuery, { waitUntil: 'domcontentloaded' });
-
-    await page.waitForSelector('.hfpxzc'); // location listing
-    const results = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('.hfpxzc')).map(el => {
-        const name = el.querySelector('.qBF1Pd')?.textContent || '';
-        const address = el.querySelector('.rllt__details span')?.textContent || '';
-        return { name, address };
-      });
-    });
-
-    await browser.close();
-    res.json({ keyword, pincode, count: results.length, results });
-  } catch (error) {
-    res.status(500).json({
-      error: 'Scraping failed',
-      detail: error.message
-    });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
+  fs.writeFileSync("output.json", JSON.stringify(results, null, 2));
+  console.log(`✅ Scraped ${results.length} results for ${keyword} in ${pincode}`);
+  await browser.close();
+})();
