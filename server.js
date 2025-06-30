@@ -3,8 +3,6 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
 const fs = require('fs');
-const path = require('path');
-
 const keyword = process.argv[2];
 const pincode = process.argv[3];
 
@@ -22,27 +20,32 @@ const searchURL = `https://www.google.com/maps/search/${encodeURIComponent(keywo
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
-  try {
-    const page = await browser.newPage();
-    await page.goto(searchURL, {
-      waitUntil: 'domcontentloaded',
-      timeout: 90000,
-    });
+  const page = await browser.newPage();
 
-    // Wait for listings to load (replacing waitForTimeout with a native delay)
-    await new Promise(resolve => setTimeout(resolve, 6000));
+  try {
+    await page.goto(searchURL, { waitUntil: 'domcontentloaded', timeout: 0 });
+
+    // Wait for results list container
+    await page.waitForSelector('div[role="main"]', { timeout: 15000 });
+
+    // Scroll to load more listings
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('PageDown');
+      await new Promise(res => setTimeout(res, 1000));
+    }
 
     const data = await page.evaluate(() => {
-      const listings = document.querySelectorAll('div[role="article"]');
+      const items = document.querySelectorAll('div[role="article"]');
       const results = [];
 
-      listings.forEach(el => {
-        const name = el.querySelector('div[aria-label]')?.getAttribute('aria-label') || '';
-        const address = el.querySelector('.W4Efsd')?.textContent || '';
-        const phoneMatch = el.innerText.match(/(\+91[-\s]?)?\d{10}/);
+      items.forEach(item => {
+        const name = item.querySelector('div[aria-label]')?.getAttribute('aria-label') || '';
+        const address = item.querySelector('.W4Efsd')?.textContent || '';
+        const phoneMatch = item.innerText.match(/(\+91[-\s]?)?\d{10}/);
         const phone = phoneMatch ? phoneMatch[0] : '';
-        const website = el.querySelector('a[href^="http"]')?.href || '';
-        results.push({ name, address, phone, website });
+        const website = item.querySelector('a[href^="http"]')?.href || '';
+
+        if (name) results.push({ name, address, phone, website });
       });
 
       return results;
