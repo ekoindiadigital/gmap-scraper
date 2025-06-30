@@ -1,15 +1,12 @@
 {
   "name": "gmap-scraper",
   "version": "1.0.0",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "puppeteer install"
   },
   "dependencies": {
     "express": "^4.18.2",
     "puppeteer": "^21.3.8"
-  },
-  "puppeteer": {
-    "skip_chromium_download": true
   }
 }
