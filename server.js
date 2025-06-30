@@ -1,49 +1,44 @@
-const express = require("express");
-const puppeteer = require("puppeteer");
+const express = require('express');
+const puppeteer = require('puppeteer');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.get("/", (req, res) => {
-  res.send("✅ Server is live. Use /scrape?keyword=ATM&pincode=110001");
+app.get('/', (req, res) => {
+  res.send('✅ Server is live. Use /scrape?keyword=ATM&pincode=110001');
 });
 
-app.get("/scrape", async (req, res) => {
+app.get('/scrape', async (req, res) => {
   const { keyword, pincode } = req.query;
-
   if (!keyword || !pincode) {
-    return res.status(400).json({ error: "Missing keyword or pincode" });
+    return res.status(400).json({ error: 'Missing keyword or pincode' });
   }
 
   try {
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const page = await browser.newPage();
-    const searchURL = `https://www.google.com/maps/search/${encodeURIComponent(
-      keyword + " near " + pincode
-    )}`;
+    const searchQuery = `https://www.google.com/maps/search/${keyword}+${pincode}`;
+    await page.goto(searchQuery, { waitUntil: 'domcontentloaded' });
 
-    await page.goto(searchURL, { waitUntil: "networkidle2" });
-    await page.waitForTimeout(3000);
-
+    await page.waitForSelector('.hfpxzc'); // location listing
     const results = await page.evaluate(() => {
-      const places = [];
-      document.querySelectorAll(".hfpxzc").forEach((el) => {
-        const name = el.querySelector(".qBF1Pd")?.innerText || "";
-        const address = el.querySelector(".rllt__details span")?.innerText || "";
-        places.push({ name, address });
+      return Array.from(document.querySelectorAll('.hfpxzc')).map(el => {
+        const name = el.querySelector('.qBF1Pd')?.textContent || '';
+        const address = el.querySelector('.rllt__details span')?.textContent || '';
+        return { name, address };
       });
-      return places;
     });
 
     await browser.close();
-    res.json({ keyword, pincode, results });
-  } catch (err) {
+    res.json({ keyword, pincode, count: results.length, results });
+  } catch (error) {
     res.status(500).json({
-      error: "Scraping failed",
-      detail: err.message
+      error: 'Scraping failed',
+      detail: error.message
     });
   }
 });
