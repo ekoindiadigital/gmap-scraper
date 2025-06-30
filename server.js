@@ -1,39 +1,30 @@
 const puppeteer = require("puppeteer");
-const fs = require("fs");
 
-// Get input from command line
-const keyword = process.argv[2] || "ATM";
-const pincode = process.argv[3] || "110001";
-
-// Main scraper function
-(async () => {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
-
+async function scrapeGmap(keyword, pincode) {
+  const browser = await puppeteer.launch({ headless: "new" });
   const page = await browser.newPage();
 
-  const searchQuery = encodeURIComponent(`${keyword} near ${pincode}`);
-  const url = `https://www.google.com/maps/search/${searchQuery}`;
+  const query = `${keyword} ${pincode}`;
+  const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
+  await page.goto(url, { waitUntil: "domcontentloaded" });
 
-  await page.goto(url, { waitUntil: "networkidle2" });
-  await page.waitForTimeout(5000); // wait for results to load
+  await page.waitForSelector('[role="article"]', { timeout: 10000 });
 
   const results = await page.evaluate(() => {
+    const cards = document.querySelectorAll('[role="article"]');
     const data = [];
-    const cards = document.querySelectorAll('div[role="article"]');
-    cards.forEach(card => {
-      const name = card.querySelector("h3")?.innerText;
-      const address = card.querySelector("span[jsinstance='2']")?.innerText;
-      if (name && address) {
-        data.push({ name, address });
-      }
+    cards.forEach((card) => {
+      const name = card.querySelector("h3")?.textContent || "";
+      const address = card.querySelector('[data-item-id*="address"]')?.textContent || "";
+      const phone = card.querySelector('[data-tooltip*="Phone"]')?.textContent || "";
+      data.push({ name, address, phone });
     });
     return data;
   });
 
-  fs.writeFileSync("output.json", JSON.stringify(results, null, 2));
-  console.log(`✅ Scraped ${results.length} results for ${keyword} in ${pincode}`);
+  console.log(JSON.stringify(results, null, 2));
   await browser.close();
-})();
+}
+
+const [keyword, pincode] = process.argv.slice(2);
+scrapeGmap(keyword || "ATM", pincode || "110001");
