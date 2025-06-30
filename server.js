@@ -1,11 +1,12 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const chromium = require('chrome-aws-lambda');
+const puppeteer = require('puppeteer-core');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-  res.send('✅ GMap Scraper is running!');
+  res.send('✅ GMap Scraper is running with headless Chrome!');
 });
 
 app.get('/scrape', async (req, res) => {
@@ -15,33 +16,31 @@ app.get('/scrape', async (req, res) => {
     return res.status(400).json({ error: 'Missing keyword or pincode' });
   }
 
-  const query = `${keyword} in ${pincode}`;
-
   try {
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath,
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
-    await page.goto(`https://www.google.com/maps`, { waitUntil: 'domcontentloaded' });
 
-    // Type in search query
+    const query = `${keyword} in ${pincode}`;
+    await page.goto('https://www.google.com/maps', { waitUntil: 'domcontentloaded' });
+
     await page.waitForSelector('input[aria-label="Search Google Maps"]');
     await page.type('input[aria-label="Search Google Maps"]', query);
     await page.keyboard.press('Enter');
 
-    // Wait for search results
     await page.waitForTimeout(5000);
 
-    // Extract place names from the results
     const results = await page.evaluate(() => {
-      const nodes = document.querySelectorAll('div[role="article"] h3 span');
-      return Array.from(nodes).map(el => el.textContent);
+      const titles = document.querySelectorAll('div[role="article"] h3 span');
+      return Array.from(titles).map(el => el.textContent);
     });
 
     await browser.close();
-
     res.json({ success: true, query, results });
   } catch (err) {
     console.error(err);
@@ -50,5 +49,5 @@ app.get('/scrape', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server started on port ${PORT}`);
+  console.log(`✅ Server listening on port ${PORT}`);
 });
