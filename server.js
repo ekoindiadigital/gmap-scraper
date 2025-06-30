@@ -1,6 +1,6 @@
-const express = require('express');
-const puppeteer = require('puppeteer-core');
-const chromium = require('chrome-aws-lambda');
+import express from 'express';
+import puppeteer from 'puppeteer-core';
+import chromium from 'chrome-aws-lambda';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,10 +16,8 @@ app.get('/scrape', async (req, res) => {
     return res.status(400).json({ error: 'Missing keyword or pincode' });
   }
 
-  let browser = null;
-
   try {
-    browser = await puppeteer.launch({
+    const browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
       executablePath: await chromium.executablePath,
@@ -27,22 +25,35 @@ app.get('/scrape', async (req, res) => {
     });
 
     const page = await browser.newPage();
-    const searchUrl = `https://www.google.com/maps/search/${keyword}+${pincode}`;
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
+    const searchURL = `https://www.google.com/maps/search/${encodeURIComponent(
+      keyword
+    )}+${pincode}`;
 
-    const title = await page.title();
+    await page.goto(searchURL, { waitUntil: 'networkidle0' });
 
-    res.json({ message: 'Scraping successful', title });
+    const data = await page.evaluate(() => {
+      const results = [];
+      const listings = document.querySelectorAll('.hfpxzc');
 
+      listings.forEach((el) => {
+        const name = el.querySelector('.qBF1Pd')?.textContent || 'No name';
+        const address = el.querySelector('.rllt__details span:nth-child(2)')?.textContent || 'No address';
+        results.push({ name, address });
+      });
+
+      return results;
+    });
+
+    await browser.close();
+    res.json({ results: data });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to scrape Google Maps', detail: error.message });
-  } finally {
-    if (browser !== null) {
-      await browser.close();
-    }
+    res.status(500).json({
+      error: 'Failed to scrape Google Maps',
+      detail: error.message,
+    });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`✅ Server is running on http://localhost:${PORT}`);
 });
